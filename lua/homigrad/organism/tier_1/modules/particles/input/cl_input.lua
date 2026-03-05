@@ -65,7 +65,7 @@ hg.addBloodPart2 = addBloodPart2
 
 local Rand = math.Rand
 
-local hg_bloodimpacts = ConVarExists("hg_bloodimpacts") and GetConVar("hg_bloodimpacts") or CreateConVar("hg_bloodimpacts", 0, FCVAR_ARCHIVE, "Enable custom blood impact effects spray cool kill death", 0, 1)
+local hg_bloodimpacts = ConVarExists("hg_bloodimpacts") and GetConVar("hg_bloodimpacts") or CreateConVar("hg_bloodimpacts", 0, FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable custom blood impact effects spray cool kill death", 0, 1)
 
 local function impact(pos,vel,mul)
 	local max = math.min(mul,8)
