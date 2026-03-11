@@ -44,8 +44,6 @@ hook.Add("InputMouseApply", "fakeCameraAngles", function(cmd, x, y, angle)
 
 	hook.Run("HG.InputMouseApply", tbl)
 
-	
-
 	if !lply:Alive() then
 		tbl.angle.r = 0
 	end
@@ -148,7 +146,7 @@ hook.Add("HG.InputMouseApply", "fakeCameraAngles2", function(tbl)
 	rollang = follow == lply.OldRagdoll and 0 or rollang
 	angle2.roll = rollang
 	
-	if GetGlobalBool("hg_shitty_fake", true) then
+	if GetGlobalBool("hg_shitty_fake", true) and math.abs(math.AngleDifference(rollang, angle.roll)) < 60 then
 		angle = LerpAngleFT(follow == lply.OldRagdoll and 0.1 or 0.01, angle, angle2)--math.Approach(angle.roll, rollang, adda * ftlerped * 80)
 	end
 
