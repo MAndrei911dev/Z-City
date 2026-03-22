@@ -303,6 +303,32 @@ CalcView = function(ply, origin, angles, fov, znear, zfar)
 	if g_VR and g_VR.active then return end
 	if GetViewEntity() ~= (ply or LocalPlayer()) then return end
 
+	// LVS compat: return drone pos/angles before drive.CalcView or anything else runs
+	do
+		local _vehicle = ply:lvsGetVehicle()
+		if IsValid(_vehicle) then
+			local _pos = _vehicle:GetPos()
+			local _ang = _vehicle:GetAngles()
+			-- Use the "view" attachment if it exists (FPV camera position on model)
+			local _attID = _vehicle:LookupAttachment("view")
+			if _attID and _attID > 0 then
+				local _att = _vehicle:GetAttachment(_attID)
+				if _att then
+					_pos = _att.Pos
+					_ang = _att.Ang
+				end
+			end
+			return {
+				origin     = _pos,
+				angles     = _ang,
+				fov        = fov,
+				znear      = znear,
+				zfar       = zfar,
+				drawviewer = false,
+			}
+		end
+	end
+
 	local view = {
 		["origin"] = origin,
 		["angles"] = angles,
@@ -645,9 +671,46 @@ hook.Add( "HG.InputMouseApply", "FreezeTurning", function( tbl )
 end )
 
 hg.CalcView = CalcView
+
+// LVS compat: wrap hg.CalcView so that when "homigrad-view" calls it,
+// we intercept for LVS vehicles and return the drone's own pos/angles.
+if CLIENT then
+	local _origCalcView = hg.CalcView
+	hg.CalcView = function(ply, origin, angles, fov, znear, zfar)
+		if ply:GetViewEntity() == ply then
+			local vehicle = ply:lvsGetVehicle()
+			if IsValid(vehicle) then
+				return {
+					origin     = vehicle:GetPos(),
+					angles     = vehicle:GetAngles(),
+					fov        = fov,
+					drawviewer = false,
+				}
+			end
+		end
+		return _origCalcView(ply, origin, angles, fov, znear, zfar)
+	end
+	// Also update CalcViewFake since it's set from the local CalcView var
+	hg.CalcViewFake = hg.CalcView
+end
+
 hook.Add("CalcView", "homigrad-view", function(ply, origin, angles, fov, znear, zfar)
 	local viewa = viewOverride
 	viewOverride = nil
+
+	// LVS compat: intercept before Z-City's camera runs
+	if ply:GetViewEntity() == ply then
+		local vehicle = ply:lvsGetVehicle()
+		if IsValid(vehicle) then
+			return {
+				origin     = vehicle:GetPos(),
+				angles     = vehicle:GetAngles(),
+				fov        = fov,
+				drawviewer = false,
+			}
+		end
+	end
+
 	return viewa or CalcView(ply, origin, angles, fov, znear, zfar)
 end)
 

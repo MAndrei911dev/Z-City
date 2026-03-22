@@ -181,8 +181,11 @@ function hg.Ragdoll_Create(ply)
 	
 	if ply:InVehicle() then
 		local veh = ply:GetVehicle()
-		veh.rags = veh.rags or {}
-		table.insert(veh.rags, ragdoll)
+		// LVS compat: don't track ragdoll on LVS vehicle
+		if not ply._lvsIsInVehicle then
+			veh.rags = veh.rags or {}
+			table.insert(veh.rags, ragdoll)
+		end
 	end
 
 	for physNum = 0, ragdoll:GetPhysicsObjectCount() - 1 do
@@ -222,6 +225,13 @@ function hg.Ragdoll_Create(ply)
 		if ply:InVehicle() then
 			local veh = ply:GetVehicle()
 			local veh2 = ply.GetSimfphys and IsValid(ply:GetSimfphys()) and ply:GetSimfphys() or ply:GetVehicle()
+
+			// LVS compat: skip parenting/bone-from-vehicle for LVS vehicles — it causes
+			// the ragdoll to attach to and position itself as part of the drone.
+			if ply._lvsIsInVehicle then
+				phys:SetMass(IdealMassPlayer[ragdoll:GetBoneName(bone)] or 4)
+				continue
+			end
 
 			//ply.nocollide1 = constraint.NoCollide(ragdoll, veh, physNum, 0)
 			//ply.nocollide2 = constraint.NoCollide(ragdoll, IsValid(veh:GetParent()) and veh:GetParent() or veh, physNum, 0)
@@ -437,9 +447,12 @@ hook.Add("DoPlayerDeath", "Fake", function(ply)
 	local ragdoll = ply.FakeRagdoll
 	--if not IsValid(ragdoll) then return end
 	if (not ply.Removed) and not IsValid(ragdoll) then
-		ragdoll = Ragdoll_Create(ply)
-		ply.FakeRagdoll = ragdoll
-		NET_Fake(ragdoll, ply)
+		// LVS compat: skip ragdoll creation when dying inside an LVS vehicle.
+		if not ply._lvsIsInVehicle then
+			ragdoll = Ragdoll_Create(ply)
+			ply.FakeRagdoll = ragdoll
+			NET_Fake(ragdoll, ply)
+		end
 	end
 
 	if not IsValid(ragdoll) then return end
@@ -537,6 +550,9 @@ end
 function hg.Fake(ply, huyragdoll, no_freemove, force)
 	ply.switchingseat = nil
 	if ply:GetMoveType() == 0 then return end
+	// LVS compat: never fake-ragdoll a player who is in an LVS vehicle
+	if ply._lvsIsInVehicle then return end
+	if ply.InVehicle and ply:InVehicle() and not force then return end
 	if ply.InVehicle and ply:InVehicle() and not force then return end
 	if not IsValid(huyragdoll) and (not IsValid(ply) or IsValid(ply.FakeRagdoll) or not (ply:IsPlayer() and ply:Alive())) then return end
 	local ragdoll = IsValid(huyragdoll) and huyragdoll or Ragdoll_Create(ply, true)
@@ -925,6 +941,22 @@ hook.Add("CanPlayerEnterVehicle","fake_enterveh",function(ply, veh)
 end)
 
 hook.Add("PlayerEnteredVehicle","allowweapons",function(ply,veh,role)
+	// LVS compat: LVS sets ply._lvsIsInVehicle before this hook runs ("!!!!" prefix sorts first).
+	// Skip all ragdoll/camera logic for LVS vehicles.
+	if ply._lvsIsInVehicle then
+		ply:SetAllowWeaponsInVehicle(true)
+		// Hide player body without creating a ragdoll
+		timer.Simple(1.1, function()
+			if not IsValid(ply) or not ply._lvsIsInVehicle then return end
+			ply:DrawWorldModel(false)
+			ply:DrawShadow(false)
+			ply:SetRenderMode(RENDERMODE_NONE)
+			ply:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
+			ply._lvs_hidden = true
+		end)
+		return
+	end
+
 	ply:SetEyeAngles(angle_zero)
 	//local veh2 = veh:GetParent()
 
@@ -974,6 +1006,16 @@ hook.Add("PlayerLeaveVehicle","allowweapons",function(ply,veh)
 
 	if timer.Exists("EnterVehicleRag"..ply:EntIndex()) then
 		timer.Remove("EnterVehicleRag"..ply:EntIndex())
+	end
+
+	// LVS compat: restore player body visibility if we hid it on entry
+	if ply._lvs_hidden then
+		ply._lvs_hidden = nil
+		ply:DrawWorldModel(true)
+		ply:DrawShadow(true)
+		ply:SetRenderMode(RENDERMODE_NORMAL)
+		ply:SetCollisionGroup(COLLISION_GROUP_PLAYER)
+		return
 	end
 
 	//if !hg.fallfromveh then

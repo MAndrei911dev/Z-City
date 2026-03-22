@@ -22,6 +22,17 @@ end
 
 local diff = Angle()
 hook.Add("InputMouseApply", "fakeCameraAngles", function(cmd, x, y, angle)
+	local _isLVS = IsValid(lply:lvsGetVehicle())
+
+	// LVS compat: for LVS vehicles, just update view angles normally so
+	// PlayerMouseAim gets correct eye angles, but skip all Z-City camera logic
+	if _isLVS then
+		angle.pitch = math.Clamp(angle.pitch + y / 50, -89, 89)
+		angle.yaw = angle.yaw - x / 50
+		cmd:SetViewAngles(angle)
+		return true
+	end
+
 	local tbl = {}
 	local cc = GetCoolCameraBool()
 	local vpangs
@@ -64,15 +75,18 @@ hook.Add("InputMouseApply", "fakeCameraAngles", function(cmd, x, y, angle)
 		angle.yaw = angle.yaw - x / 50
 	end
 
-	if cc then
-		realanglelerp = LerpAngleFT(0.09 * (hg_coolcameralerpmult:GetFloat() or 1), realanglelerp, realangle)
-		angle = realanglelerp + vpangs
-		if !IsValid(lply.FakeRagdoll) then angle[1] = math.Clamp(angle[1], -89, 89) end
-		realangle = realangle + diff
-		diff = LerpAngleFT(0.01, diff, angle_zero)
-		cmd:SetViewAngles(angle)
-	else
-		cmd:SetViewAngles(angle)
+	// LVS compat: don't call SetViewAngles - it zeroes cmd mouse delta before LVS reads it
+	if not _isLVS then
+		if cc then
+			realanglelerp = LerpAngleFT(0.09 * (hg_coolcameralerpmult:GetFloat() or 1), realanglelerp, realangle)
+			angle = realanglelerp + vpangs
+			if !IsValid(lply.FakeRagdoll) then angle[1] = math.Clamp(angle[1], -89, 89) end
+			realangle = realangle + diff
+			diff = LerpAngleFT(0.01, diff, angle_zero)
+			cmd:SetViewAngles(angle)
+		else
+			cmd:SetViewAngles(angle)
+		end
 	end
 	
 	lply.fakeangles = angle
@@ -123,9 +137,12 @@ hook.Add("HG.InputMouseApply", "fakeCameraAngles2", function(tbl)
 	end]]
 
 	if lply:InVehicle() and not IsValid(follow) then
-		tbl.override_angle = true
-		tbl.angle = angle_zero
-		return true
+		// LVS compat: don't zero angles for LVS vehicles
+		if not IsValid(lply:lvsGetVehicle()) then
+			tbl.override_angle = true
+			tbl.angle = angle_zero
+			return true
+		end
 	end
 
 	if !IsValid(follow) then
